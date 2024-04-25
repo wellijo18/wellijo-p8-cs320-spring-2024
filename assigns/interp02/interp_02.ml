@@ -187,7 +187,11 @@ let ws = many (ws >> parse_comment) >> ws
 let keyword w = str w << ws
 
 let rec parse_com () =
-  let parse_fun = fail (* TODO *)
+  let parse_fun =
+    let* _ = char ':' in
+    let* prog = parse_prog_rec () in
+    let* _ = char ';' in
+    pure (Fun prog)
   in
   let parse_if =
     let* _ = keyword "?" in
@@ -205,9 +209,32 @@ let rec parse_com () =
     let* _ = char ';' in
     pure (While (check, body))
   in
+  let parse_math =     
+    choice
+    [ keyword "+" >| Add
+    ; keyword "*" >| Mul
+    ; keyword "/" >| Div
+  ]
+  in
+  let parse_ops =
+    choice
+    [ keyword "&&" >| And
+    ; keyword "||" >| Or
+    ; keyword "~" >| Not
+    ; keyword "<" >| Lt
+    ; keyword "=" >| Eq
+    ]
+  in
+  let parse_bind =
+    keyword "|>" >> parse_ident >|= (fun id -> Bind id)
+  in
   choice
     (* TODO: Add more alternatives *)
-    [ parse_fun
+    [ parse_bind
+    ; parse_math
+    ; parse_ops
+    ; parse_fun
+    ; parse_bind
     ; parse_while
     ; parse_if
     ; parse_ident >|= (fun s -> Fetch s)
@@ -221,7 +248,12 @@ let parse_prog = parse (ws >> parse_prog_rec ())
 (* FETCHING AND UPDATING *)
 
 (* fetch the value of `x` in the environment `e` *)
-let fetch_env e x = None (* TODO *)
+let rec fetch_env e x =
+  match e with
+  | [] -> None
+  | (daId, daVal) :: tl ->
+    if daId = x then Some daVal
+    else fetch_env tl x
 
 let rec update_env e x v = Global [] (* TODO *)
 
@@ -242,7 +274,49 @@ let eval_step (c : stack * env * trace * program) =
   | _ :: _ :: _, _, _, Add :: _ -> panic c "type error (+ on non-integers)"
   | _ :: [], _, _, Add :: _ -> panic c "stack underflow (+ on single)"
   | [], _, _, Add :: _ -> panic c "stack underflow (+ on empty)"
-  | _ -> assert false (* TODO *)
+  (* Mul *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Mul :: p -> Const (Num (m * n)) :: s, e, t, p
+  | _ :: _ :: _, _, _, Mul :: _ -> panic c "type error (* cant be used here)"
+  | _ :: [], _, _, Mul :: _ -> panic c "stack underflow (* on one val)"
+  | [], _, _, Mul :: _ -> panic c "stack underflow (* used on empty)"
+  (* Div *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Div :: p when n <> 0 -> Const (Num (m / n)) :: s, e, t, p
+  | _ :: Const (Num 0) :: _, _, _, Div :: _ -> panic c "divide by 0 error"
+  | _ :: _ :: _, _, _, Div :: _ -> panic c "type error (/ cant be used here)"
+  | _ :: [], _, _, Div :: _ -> panic c "stack underflow (/ on one val)"
+  | [], _, _, Div :: _ -> panic c "stack underflow (/ used on empty)"
+  (* And *)
+  | Const (Bool m) :: Const (Bool n) :: s, e, t, And :: p -> Const (Bool (m && n)) :: s, e, t, p
+  | _ :: _ :: _, _, _, And :: _ -> panic c "type error (&& cant be used here)"
+  | _ :: [], _, _, And :: _ -> panic c "stack underflow (&& one one val)"
+  | [], _, _, And :: _ -> panic c "stack underflow (&& used on empty)"
+  (* Or *)
+  | Const (Bool m) :: Const (Bool n) :: s, e, t, Or :: p -> Const (Bool (m || n)) :: s, e, t, p
+  | _ :: _ :: _, _, _, Or :: _ -> panic c "type error (|| cant be used here)"
+  | _ :: [], _, _, Or :: _ -> panic c "stack underflow (|| on one val)"
+  | [], _, _, Or :: _ -> panic c "stack underflow (|| used on empty)"
+  (* Not *)
+  | Const (Bool m) :: s, e, t, Not :: p -> Const (Bool (not m)) :: s, e, t, p
+  | _ :: _, _, _, Not :: _ -> panic c "type error (not cant be used here)"
+  | [], _, _, Not :: _ -> panic c "stack underflow (not used on empty)"
+  (* Lt *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Lt :: p -> Const (Bool (m < n)) :: s, e, t, p
+  | _ :: _ :: _, _, _, Lt :: _ -> panic c "type error (< on cant be used here)"
+  | _ :: [], _, _, Lt :: _ -> panic c "stack underflow (< on one val)"
+  | [], _, _, Lt :: _ -> panic c "stack underflow (< used on empty)"
+  (* Eq *)
+  | Const (Num m) :: Const (Num n) :: s, e, t, Eq :: p -> Const (Bool (m = n)) :: s, e, t, p
+  | Const (Bool m) :: Const (Bool n) :: s, e, t, Eq :: p -> Const (Bool (m = n)) :: s, e, t, p
+  | _ :: _ :: _, _, _, Eq :: _ -> panic c "type error (= cant be used on dif types)"
+  | _ :: [], _, _, Eq :: _ -> panic c "stack underflow (= on one val)"
+  | [], _, _, Eq :: _ -> panic c "stack underflow (= used on empty)"
+  (* Fetch *)
+  | s, e, t, Fetch x :: p -> (
+    match fetch_env e x with
+    | Some value -> value :: s, e, t, p
+    | None -> panic c "fetch error"
+  )
+
 
 let rec eval c =
   match c with
