@@ -511,19 +511,19 @@ type lexpr
   | Trace of lexpr
 
 let desugar (p : top_prog) : lexpr =
-  let rec desugar_expr (e : expr) : lexpr =
+  let rec da (e : expr) : lexpr =
     match e with
     | Unit -> Unit
     | Num n -> Num n
     | Bool b -> Bool b
     | Var x -> Var x
-    | Uop (op, e) -> Uop (op, desugar_expr e)
-    | Bop (op, e1, e2) -> Bop (op, desugar_expr e1, desugar_expr e2)
+    | Uop (op, e) -> Uop (op, da e)
+    | Bop (op, e1, e2) -> Bop (op, da e1, da e2)
     | Ife (x, y, z) ->
-        Ife (desugar_expr x, desugar_expr y, desugar_expr z)
-    | Trace e -> Trace (desugar_expr e)
+        Ife (da x, da y, da z)
+    | Trace e -> Trace (da e)
   in
-  List.fold_right (fun def acc -> Bop (Add, acc, desugar_expr def)) p Unit
+  List.fold_right (fun def acc -> Bop (Add, acc, da def)) p Unit
 
 
 let rec translate (e : lexpr) : stack_prog =
