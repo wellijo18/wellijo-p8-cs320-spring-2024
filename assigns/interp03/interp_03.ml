@@ -510,9 +510,56 @@ type lexpr
   | App of lexpr * lexpr
   | Trace of lexpr
 
-let desugar (p : top_prog) : lexpr = Unit (* TODO *)
-let translate (e : lexpr) : stack_prog = [] (* TODO *)
-let serialize (p : stack_prog) : string = "" (* TODO *)
+let desugar (p : top_prog) : lexpr =
+  let rec desugar_expr (e : expr) : lexpr =
+    match e with
+    | Unit -> Unit
+    | Num n -> Num n
+    | Bool b -> Bool b
+    | Var x -> Var x
+    | Uop (op, e) -> Uop (op, desugar_expr e)
+    | Bop (op, e1, e2) -> Bop (op, desugar_expr e1, desugar_expr e2)
+    | Ife (x, y, z) ->
+        Ife (desugar_expr x, desugar_expr y, desugar_expr z)
+    | Trace e -> Trace (desugar_expr e)
+  in
+  List.fold_right (fun def acc -> Bop (Add, acc, desugar_expr def)) p Unit
+
+
+let rec translate (e : lexpr) : stack_prog =
+  match e with
+  | Unit -> [Push Unit]
+  | Num n -> [Push (Num n)]
+  | Bool b -> [Push (Bool b)]
+  | Var x -> [Lookup x]
+  | Uop (op, x) -> translate x
+  | Bop (op, x, y) -> translate x @ translate y
+  | Ife (x, y, z) -> translate x @ [If (translate y, translate z)]
+  | App (x, y) -> translate x @ translate y
+  | Fun (params, body) -> translate body
+  | Trace e -> translate e @ [Trace]
+
+
+
+let rec serialize (p : stack_prog) : string =
+  let da x =
+    match x with
+    | Push (Num y) -> "push \n" y
+    | Push (Bool y) -> "push \n" y
+    | Push Unit -> "push unit \n"
+    | Swap -> "swap \n"
+    | Trace -> "trace \n"
+    | Add -> "add \n"
+    | Sub -> "sub \n"
+    | Mul -> "mul \n"
+    | Div -> "div \n"
+    | Lt -> "lt \n"
+    | If (y, z) ->
+        "if " ^ serialize y ^ "else " ^ serialize z ^ "end \n"
+    | Call -> "call \n"
+    | Return -> "return \n"
+  in
+  List.map da p |> String.concat ""
 
 let compile (s : string) : string option =
   match parse_top_prog s with
