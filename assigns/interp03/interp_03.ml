@@ -559,7 +559,7 @@ let rec serialize (p : stack_prog) : string =
     | Call -> "call \n"
     | Return -> "return \n"
   in
-  List.map da p |> String.concat ""
+  List.map da p String.concat ""
 
 let compile (s : string) : string option =
   match parse_top_prog s with
