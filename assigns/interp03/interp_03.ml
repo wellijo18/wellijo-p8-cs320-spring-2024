@@ -537,7 +537,7 @@ let rec translate (e : lexpr) : stack_prog =
   | Ife (x, y, z) -> translate x @ [If (translate y, translate z)]
   | App (x, y) -> translate x @ translate y
   | Fun (params, body) -> translate body
-  | Trace e -> translate e @ [Trace]
+  | Trace e -> translate e
 
 
 
